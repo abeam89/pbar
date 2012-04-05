@@ -1,0 +1,356 @@
+#!/bin/bash
+
+#    Copyright 2012 Austin Beam
+
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# Bash progress bar (pbar) script, which provides a progress bar and percentage
+# output to the console. There are many various configuration options to allow
+# the user to generate the desired output.
+
+
+# Example:
+# $ pbar 50
+# [####################################-------------------------------------]  50%
+
+# There is also an inverted bar output type, which cannot be demonstrated in a
+# text file. This type just inverts the background color rather than using
+# characters to represent the progress bar.
+
+# The user will input a percentage from 0-100, not necessarily an integer. The
+# resolution of the resulting progress bar is dependent upon the width that is
+# used. The default width is 80 characters, with 73 or 75 characters dedicated
+# to actual progress indicators, depending on the output method used. There are
+# multiple options available for modifying the output width as desired. Keep in
+# mind that pbar isn't optimized for performance as a result of supporting so
+# many different options for configuration. Consider using parts of pbar to
+# help you obtain the output you desire if pbar isn't meeting your performance
+# specifications.
+
+# Define default return codes
+SUCCESS=0
+ERROR=1
+
+# Define the default characters that will make up the progress bar
+BAR_CHAR='#'
+NON_BAR_CHAR='-'
+
+# Define inverted printing
+INVON=$(tput smso)
+INVOFF=$(tput rmso)
+
+# Define the number of extra characters the display needs
+# 2 characters are the encapsulating (end) characters
+END_CHARS=2
+# 7 characters total are needed for the encapsulating characters, spaces,
+# and percentage display
+EXTRA_CHARS=7
+
+# Define the max pbar width to promote readability
+MAX_BAR_WIDTH=$((100 + $EXTRA_CHARS))
+
+# Define the default pbar width
+BAR_WIDTH=80
+
+# Define a regex for a valid barchar. Set it to any single character.
+VALID_BAR_CHAR="^.$"
+
+# Help for bash_progress_bar
+printHelp()
+{
+  echo "\
+Usage: pbar percentage [options]
+
+Description
+pbar is a progam used to display a progress bar based on a percentage. It has
+the ability to scale to fit the display and as desired by the user, and can use
+different characters or even inverted mode to display the bar. The bar can be
+integrated into existing solutions to provide a quality output for the user.
+
+Example output for standard pbar:
+[#####################################-------------------------------------] 50%
+Example output for inverted pbar:"
+# Print an example of the inverted pbar
+$0 -iw 80 50
+echo "
+The following options are supported:
+--------------------------------------------------------------------------------
+--bar-char=CHAR      -b CHAR  | Use CHAR instead of the default bar character.
+--------------------------------------------------------------------------------
+--inv                -i       | Use the inverted bar rather than a character
+                              | bar.
+                              | Note that this doesn't work unless inverted
+                              | printing is supported by your terminal. Also
+                              | note that this overrides any bar/non-bar char
+                              | specification.
+--------------------------------------------------------------------------------
+--no-newline         -l       | Do not print a newline after printing the
+                              | progress bar. This is for a case where you would
+                              | like to print more text on a line with a pbar.
+                              | Don't use this if you're trying to implement a
+                              | dynamic progress bar, use --overwrite (-o)
+                              | instead. It will delete the previous pbar each
+                              | iteration where this would just append to it.
+--------------------------------------------------------------------------------
+--max-width          -m       | Print the progress bar to the maximum width
+                              | that will fit your current terminal.
+--------------------------------------------------------------------------------
+--non-bar-char=CHAR  -n CHAR  | Use CHAR instead of the default character
+                              | to indicate the incomplete portion of the
+                              | progress bar.
+--------------------------------------------------------------------------------
+--overwrite          -o       | Overwrite the last line printed when printing
+                              | the progress bar. Use this if pbar is being
+                              | updated over multiple passes to generate a
+                              | dynamic progress bar.
+--------------------------------------------------------------------------------
+--specific           -s       | For use with the width specifier. If the width
+                              | of your terminal is reporting incorrectly or if
+                              | you would like pbar to print beyond the
+                              | boundary of your terminal, use this flag to
+                              | output the progress bar to the specific width.
+                              | Note that this is only pertinent when used with
+                              | the width parameter (--width or -w) and a
+                              | specified width. Otherwise this parameter is
+                              | ignored by pbar.
+--------------------------------------------------------------------------------
+--width=WIDTH        -w WIDTH | Use WIDTH instead of the default width when 
+                              | generating the progress bar. Keep in mind that
+                              | the progress bar will not output wider than the
+                              | available number of columns and that at some
+                              | small widths might not provide useful output.
+--------------------------------------------------------------------------------
+"
+}
+
+# Usage isNumMinMax NUM [MIN] [MAX]
+# MIN and MAX are optional
+# default MIN is 0
+# default MAX is 100
+isNumMinMax(){
+  # Define default min and max values
+  NUM_MIN=0
+  NUM_MAX=100
+  ## Set min and max to the inputs provided if provided
+  if [ "$2" ]; then
+    NUM_MIN=$2
+  fi
+  if [ "$3" ]; then
+    NUM_MAX=$3
+  fi
+  # Make sure it's a number and round it to an int if it is
+  IN_NUM=$(printf %0.f $1 2> /dev/null)
+  # If it's not a number
+  if [ $? -ne 0 ]; then
+  # Bad input
+    return $ERROR
+  # If it is a number, is it >= 0 & <= 100?
+  elif [ $IN_NUM -ge $NUM_MIN -a $IN_NUM -le $NUM_MAX ]; then
+    return $SUCCESS
+  # Else, it's out of our range
+  else
+    return $ERROR
+  fi
+}
+
+progress_bar(){
+  # Set the number of columns unless we're dealing with a specific width
+  if [ ! "$SPECIFIC" ]; then
+    COLUMNS=$(tput cols)
+  else
+    COLUMNS=$BAR_WIDTH
+  fi
+
+  # Make sure the width is less than the number of columns
+  if [ $COLUMNS -gt $BAR_WIDTH ]; then
+    COLUMNS=$BAR_WIDTH
+  fi
+
+  if [ "$INVBAR" ]; then
+    EXTRA_CHARS=$(($EXTRA_CHARS - $END_CHARS))
+    COLUMNS=$(($COLUMNS - $EXTRA_CHARS))
+  else
+    COLUMNS=$(($COLUMNS - $EXTRA_CHARS))
+  fi
+  
+  NUM_CHARS=$(echo "($1/100)*($COLUMNS)" | bc -l)
+  NUM_CHARS=$(printf %0.f $NUM_CHARS)
+  
+  # Remove the last line if we want to do so for overwriting purposes
+  if [ "$OVERWRITE" ]; then
+    echo -ne "\r\E[K"
+  fi
+  # Print the actual progress bar
+  if [ "$INVBAR" ]; then
+    END_CHARS=0
+    echo -ne "$INVON"
+    printf "%${NUM_CHARS}s" ""
+    echo -ne "$INVOFF"
+    printf "%$((${COLUMNS}-${NUM_CHARS}))s" ""
+  else
+    echo -n '['
+    printf -v f "%${NUM_CHARS}s"
+    printf "%s" "${f// /$BAR_CHAR}"
+    printf -v f "%$(($COLUMNS - $NUM_CHARS))s"
+    printf "%s" "${f// /$NON_BAR_CHAR}"
+    echo -n ']'
+  fi
+
+  # Print a newline as well if we aren't overwriting or (--no-newline)ing
+  if [ "$OVERWRITE" -o "$NONEWLINE" ]; then
+    printf "%$(($EXTRA_CHARS - $END_CHARS))s" "$(printf %0.f $1)%"
+  else
+    printf "%$(($EXTRA_CHARS - $END_CHARS))s\n" "$(printf %0.f $1)%"
+  fi
+}
+
+# pbar doesn't work without any input
+if [ "$1" == "" ]; then
+  echo "No input provided..."
+  printHelp
+  exit $ERROR
+fi
+
+# Parse input arguments
+for arg; do
+  if [ "$dash_b" ]; then
+    BAR_CHAR=$arg
+    if [[ ! $BAR_CHAR =~ $VALID_BAR_CHAR ]]; then
+      echo "Bad bar character provided, please try again."
+      exit $ERROR
+    fi
+    unset dash_b
+  elif [ "$dash_n" ]; then
+    NON_BAR_CHAR=$arg
+    if [[ ! $NON_BAR_CHAR =~ $VALID_BAR_CHAR ]]; then
+      echo "Bad non-bar character provided, please try again."
+      exit $ERROR
+    fi
+    unset dash_n
+  elif [ "$dash_w" ]; then
+    BAR_WIDTH=$(printf %0.f $arg 2> /dev/null)
+    if [ $? != 0 ]; then
+      BAR_WIDTH=$(($BAR_WIDTH + $EXTRA_CHARS))
+      echo "Invalid bar width specified, please try again."
+      exit $ERROR
+    fi
+    unset dash_w
+  else
+    case "$arg" in
+      --bar-char=*)
+        BAR_CHAR=$(echo "$arg" | sed 's/--bar-char=//')
+        if [[ ! $BAR_CHAR =~ $VALID_BAR_CHAR ]]; then
+          echo "Bad bar character provided, please try again."
+        fi
+        ;;
+      *help*)
+        printHelp
+        exit $SUCCESS
+        ;;
+      --inv)
+        INVBAR=true
+        ;;
+      --max-width)
+        BAR_WIDTH=$(tput cols)
+        ;;
+      --non-bar-char=*)
+        NON_BAR_CHAR=$(echo "$arg" | sed 's/--non_bar-char=//')
+        if [[ ! $NON_BAR_CHAR =~ $VALID_BAR_CHAR ]]; then
+          echo "Bad non-bar character provided, please try again."
+        fi
+        ;;
+      --no-newline)
+        NONEWLINE=true
+        ;;
+      --overwrite)
+        OVERWRITE=true
+        ;;
+      --specific)
+        SPECIFIC=true
+        ;;
+      --width=*)
+        arg=$(echo "$arg" | sed 's/--width=//')
+        BAR_WIDTH=$(printf %0.f $arg 2> /dev/null)
+        if [ $? != 0 ]; then
+          BAR_WIDTH=$(($BAR_WIDTH + $EXTRA_CHARS))
+          echo "Invalid max bar width specified, please try again."
+          exit $ERROR
+        fi
+        ;;
+      -*)
+        PARAMS=$(echo "$arg" | sed 's/-//')
+        NUMPARAMS=$((${#PARAMS} - 1))
+        for((varnum=0;varnum<=$NUMPARAMS;varnum++)); do
+          case "${PARAMS:$varnum:1}" in
+            b)
+              dash_b=true
+              ;;
+            h)
+              printHelp
+              exit $SUCCESS
+              ;;
+            H)
+              printHelp
+              exit $SUCCESS
+              ;;
+            i)
+              INVBAR=true
+              ;;
+            l)
+              NONEWLINE=true
+              ;;
+            m)
+              BAR_WIDTH=$(tput cols)
+              ;;
+            n)
+              dash_n=true
+              ;;
+            o)
+              OVERWRITE=true
+              ;;
+            s)
+              SPECIFIC=true
+              ;;
+            w)
+              dash_w=true
+              ;;
+            *)
+              echo "Invalid single-character argument, please try again."
+              echo "Use pbar -h to see the help documentation."
+              exit $ERROR
+          esac
+        done
+       ;;
+      *)
+        # Make sure it's a number between 0 and 100
+        isNumMinMax "$arg" 0 100
+        if [ $? != 0 ]; then
+          echo "Invalid percentage specified, please try again."
+          echo "Use pbar -h to see the help documentation."
+          exit $SUCCESS
+        else
+          PERCENTAGE=$arg
+        fi
+    esac
+  fi
+done
+
+# If we've gotten good input, go for it
+if [ "$PERCENTAGE" ]; then
+  progress_bar "$PERCENTAGE"
+else
+  printHelp
+  exit $ERROR
+fi
