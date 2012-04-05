@@ -1,0 +1,28 @@
+pbar
+
+Bash progress bar (pbar) script, which provides a progress bar and percentage
+output to the console. There are many various configuration options to allow
+the user to generate the desired output.
+
+I couldn't find something that would do what I wanted, so I whipped up this
+script. I've provided it here in case anyone might also find it useful, whether
+in whole or in part. Enjoy!
+
+Output Example:
+$ pbar 50
+[####################################-------------------------------------]  50%
+
+There is also an inverted bar output type, which cannot be demonstrated in a
+text file. This type just inverts the background color rather than using
+characters to represent the progress bar.
+
+The user will input a percentage from 0-100, not necessarily an integer. The
+resolution of the resulting progress bar is dependent upon the width that is
+used. The default width is 80 characters, with 73 or 75 characters dedicated
+to actual progress indicators, depending on the output method used. There are
+multiple options available for modifying the output width as desired.
+
+Keep in mind that pbar isn't optimized for performance as a result of
+supporting so many different options for configuration. Consider only using
+parts of pbar or customizing it as you see fit to help you obtain the output
+that is desired if pbar isn't meeting your performance specifications.
