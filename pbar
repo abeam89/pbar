@@ -15,30 +15,6 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-# Bash progress bar (pbar) script, which provides a progress bar and percentage
-# output to the console. There are many various configuration options to allow
-# the user to generate the desired output.
-
-
-# Example:
-# $ pbar 50
-# [####################################-------------------------------------]  50%
-
-# There is also an inverted bar output type, which cannot be demonstrated in a
-# text file. This type just inverts the background color rather than using
-# characters to represent the progress bar.
-
-# The user will input a percentage from 0-100, not necessarily an integer. The
-# resolution of the resulting progress bar is dependent upon the width that is
-# used. The default width is 80 characters, with 73 or 75 characters dedicated
-# to actual progress indicators, depending on the output method used. There are
-# multiple options available for modifying the output width as desired. Keep in
-# mind that pbar isn't optimized for performance as a result of supporting so
-# many different options for configuration. Consider using parts of pbar to
-# help you obtain the output you desire if pbar isn't meeting your performance
-# specifications.
-
 # Define default return codes
 SUCCESS=0
 ERROR=1
