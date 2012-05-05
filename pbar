@@ -185,7 +185,9 @@ progress_bar(){
   fi
 
   # Print a newline as well if we aren't overwriting or (--no-newline)ing
-  if [ "$OVERWRITE" -o "$NONEWLINE" ]; then
+  if [ "$OVERWRITE" ]; then
+    printf "%$(($EXTRA_CHARS - $END_CHARS))s\r" "$(printf %0.f $1)%"
+  elif [ "$NONEWLINE" ]; then
     printf "%$(($EXTRA_CHARS - $END_CHARS))s" "$(printf %0.f $1)%"
   else
     printf "%$(($EXTRA_CHARS - $END_CHARS))s\n" "$(printf %0.f $1)%"
